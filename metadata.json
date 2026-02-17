@@ -1,0 +1,7 @@
+{
+  "name": "ERP Fungus Executive Suite",
+  "description": "A high-end, dark-themed executive ERP dashboard with financial tracking, transaction management, and predictive analysis.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
