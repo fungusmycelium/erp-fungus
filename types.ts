@@ -10,13 +10,16 @@ export enum View {
   TRANSACTION_DETAILS = 'TRANSACTION_DETAILS',
   SALES_ORDER = 'SALES_ORDER',
   PURCHASE_REGISTRY = 'PURCHASE_REGISTRY',
-  ANALYSIS = 'ANALYSIS'
+  ANALYSIS = 'ANALYSIS',
+  USERS = 'USERS',
+  STANDARD_PRODUCTS = 'STANDARD_PRODUCTS'
 }
 
-export type UserRole = 'ADMIN' | 'OPERATOR';
+export type UserRole = 'CEO' | 'SUPERVISOR' | 'VENDEDOR' | 'ADMIN' | 'OPERATOR';
 
 export type PaymentMethod = 'Efectivo' | 'Transferencia' | 'Tarjeta';
 export type ShippingMethod = 'Starken' | 'Chilexpress' | 'Bluexpress' | 'Retiro' | 'Sucursal';
+export type PurchaseCategory = 'Insumos' | 'Venta' | 'Activos';
 
 export interface OrderItem {
   id: string;
@@ -24,6 +27,7 @@ export interface OrderItem {
   qty: number;
   price: number; // Precio con IVA incluido (Venta)
   cost?: number; // Costo de adquisición (Compra)
+  category?: PurchaseCategory;
 }
 
 export interface InventoryItem {
@@ -75,8 +79,16 @@ export interface PurchaseRecord {
   date: string;
   total: number;
   items: OrderItem[];
-  address?: string;
-  contactName?: string;
   giro?: string;
   paymentMethod?: PaymentMethod;
+  category: PurchaseCategory;
+}
+
+export interface StandardProduct {
+  id: string;
+  name: string;
+  category: string;
+  type: 'sale' | 'purchase';
+  defaultPrice: number;
+  defaultCost: number;
 }

@@ -2,29 +2,28 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { SaleRecord, OrderItem, ShippingMethod, Customer, InventoryItem } from '../types';
+import { formatRut, validateRut } from '../lib/utils';
 
 const REGIONES_CHILE = [
   "Arica y Parinacota", "Tarapacá", "Antofagasta", "Atacama", "Coquimbo",
   "Valparaíso", "Metropolitana de Santiago", "O'Higgins", "Maule",
   "Ñuble", "Biobío", "Araucanía", "Los Ríos", "Los Lagos",
-  "Aysén", "Magallanes"
+  "Aysen", "Magallanes"
 ];
 
-const validateRut = (rut: string): boolean => {
-  if (!/^[0-9]+[-|‐]{1}[0-9kK]{1}$/.test(rut)) return false;
-  const tmp = rut.split('-');
-  let digv = tmp[1];
-  const rutBody = tmp[0];
-  if (digv === 'K') digv = 'k';
-
-  let m = 0, s = 1;
-  let t = parseInt(rutBody, 10);
-  for (; t; t = Math.floor(t / 10)) {
-    s = (s + (t % 10) * (9 - (m++ % 6))) % 11;
-  }
-  const expected = s ? (s - 1).toString() : 'k';
-  return expected === digv;
+const COMUNAS_POR_REGION: Record<string, string[]> = {
+  "Metropolitana de Santiago": ["Santiago", "Providencia", "Las Condes", "Ñuñoa", "Maipú", "Puente Alto", "La Florida", "San Bernardo"],
+  "Valparaíso": ["Valparaíso", "Viña del Mar", "Quilpué", "Villa Alemana", "Concón", "Quillota"],
+  "Ñuble": ["Chillán", "San Carlos", "Coihueco", "Bulnes"],
+  "Biobío": ["Concepción", "Talcahuano", "Chiguayante", "San Pedro de la Paz", "Coronel", "Lota"],
+  "Araucanía": ["Temuco", "Padre Las Casas", "Villarrica", "Pucón", "Angol"],
+  "Los Ríos": ["Valdivia", "La Unión", "Río Bueno"],
+  "Los Lagos": ["Puerto Montt", "Osorno", "Castro", "Puerto Varas"],
+  "Aysén": ["Coyhaique", "Puerto Aysén"],
+  "Magallanes": ["Punta Arenas", "Puerto Natales"]
 };
+
+// Moved validateRut to ../lib/utils.ts
 
 interface Props {
   onBack: () => void;
@@ -54,8 +53,117 @@ const SalesOrder: React.FC<Props> = ({ onBack }) => {
     businessGiro: '',
   });
 
+  const [saleDate, setSaleDate] = useState(() => new Date().toISOString().split('T')[0]);
+
   const [orderLines, setOrderLines] = useState<OrderItem[]>([]);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  const [matchingCustomers, setMatchingCustomers] = useState<Customer[]>([]);
+  const [showAutocomplete, setShowAutocomplete] = useState(false);
+  const [matchingStandardProducts, setMatchingStandardProducts] = useState<any[]>([]);
+  const [showProductAutocompleteId, setShowProductAutocompleteId] = useState<string | null>(null);
+
+  const searchCustomer = async (rut: string) => {
+    const cleanRut = rut.replace(/\./g, '').replace('-', '');
+    if (cleanRut.length < 3) {
+      setMatchingCustomers([]);
+      setShowAutocomplete(false);
+      return;
+    }
+    const { data } = await supabase
+      .from('customers')
+      .select('*')
+      .ilike('rut', `%${rut}%`)
+      .limit(5);
+
+    if (data) {
+      setMatchingCustomers(data.map(c => ({
+        id: c.id,
+        firstName: c.first_name || '',
+        lastName: c.last_name || '',
+        rut: c.rut,
+        address: c.address || '',
+        commune: c.commune || '',
+        region: c.region || 'Metropolitana de Santiago',
+        email: c.email || '',
+        phone: c.phone || '',
+        shippingMethod: (c.shipping_method as ShippingMethod) || 'Retiro',
+        isSucursalDelivery: c.is_sucursal_delivery || false,
+        sucursalName: c.sucursal_name || '',
+        isCompany: c.is_company || false,
+        businessName: c.business_name || '',
+        businessGiro: c.business_giro || '',
+      })));
+      setShowAutocomplete(data.length > 0);
+    } else {
+      setMatchingCustomers([]);
+      setShowAutocomplete(false);
+    }
+  };
+
+  const selectCustomer = (c: Customer) => {
+    setCustomer(c);
+    setMatchingCustomers([]);
+    setShowAutocomplete(false);
+  };
+
+  const searchStandardProduct = async (name: string | undefined) => {
+    // 1. Local Search in Inventory
+    const localMatches = inventory
+      .filter(i => !name || i.name.toLowerCase().includes(name.toLowerCase()))
+      .slice(0, 5)
+      .map(i => ({
+        id: i.id,
+        name: i.name,
+        category: i.category,
+        default_price: i.lastPrice,
+        is_inventory: true,
+        stock: i.stock
+      }));
+
+    if (!name || name.length < 2) {
+      setMatchingStandardProducts(localMatches);
+      return;
+    }
+
+    // 2. Database Search in Standard Products
+    const { data } = await supabase
+      .from('standard_products')
+      .select('*')
+      .eq('type', 'sale')
+      .ilike('name', `%${name}%`)
+      .limit(5);
+
+    const dbMatches = (data || []).map(p => ({
+      id: p.id,
+      name: p.name,
+      category: p.category,
+      default_price: p.default_price,
+      is_inventory: false
+    }));
+
+    // 3. Combine results (avoid duplicates by name)
+    const combined = [...localMatches];
+    dbMatches.forEach(dbItem => {
+      if (!combined.find(c => c.name.toLowerCase() === dbItem.name.toLowerCase())) {
+        combined.push(dbItem);
+      }
+    });
+
+    setMatchingStandardProducts(combined.slice(0, 8));
+  };
+
+  const selectStandardProductForLine = (lineId: string, p: any) => {
+    // Check if it exists in inventory to get actual stock/price
+    const invItem = inventory.find(i => i.name.toLowerCase() === p.name.toLowerCase());
+
+    updateOrderLine(lineId, 'name', p.name.toUpperCase());
+    if (invItem) {
+      updateOrderLine(lineId, 'price', invItem.lastPrice);
+    } else {
+      updateOrderLine(lineId, 'price', Number(p.default_price) || 0);
+    }
+    setShowProductAutocompleteId(null);
+  };
 
   useEffect(() => {
     const fetchInv = async () => {
@@ -134,43 +242,72 @@ const SalesOrder: React.FC<Props> = ({ onBack }) => {
     setStep(step + 1);
   };
 
-  const handleFinalize = () => {
+  const handleFinalize = async () => {
     let finalizedShipping = customer.shippingMethod;
     if (['Starken', 'Chilexpress', 'Bluexpress'].includes(customer.shippingMethod)) {
       finalizedShipping = customer.sucursalName ? `${customer.shippingMethod} (Sucursal)` : `${customer.shippingMethod} (A Domicilio)` as any;
     }
 
-    const newSale: SaleRecord = {
-      id: Math.random().toString(36).substr(2, 9),
-      orderNumber: correlative,
-      customerName: customer.isCompany ? (customer.businessName || '') : `${customer.firstName} ${customer.lastName}`,
-      date: new Date().toLocaleDateString('es-CL'),
-      total: total,
-      status: 'Completado',
-      items: orderLines,
-      customerDetails: { ...customer, shippingMethod: finalizedShipping as any }
+    // 1. Ensure Customer exists and get ID
+    let customerId: string;
+    const { data: existingCust } = await supabase.from('customers').select('id').eq('rut', customer.rut).maybeSingle();
+
+    const customerPayload = {
+      first_name: customer.firstName,
+      last_name: customer.lastName,
+      rut: customer.rut,
+      address: customer.address,
+      commune: customer.commune,
+      region: customer.region,
+      email: customer.email,
+      phone: customer.phone,
+      shipping_method: finalizedShipping,
+      is_company: customer.isCompany,
+      business_name: customer.businessName,
+      business_giro: customer.businessGiro,
+      sucursal_name: customer.sucursalName,
     };
 
-    const savedCustomers = JSON.parse(localStorage.getItem('fungus_customers_db') || '[]');
-    const existingIdx = savedCustomers.findIndex((c: Customer) => c.rut === customer.rut);
-    if (existingIdx > -1) {
-      savedCustomers[existingIdx] = { ...customer, lastOrderNumber: correlative };
+    if (existingCust) {
+      customerId = existingCust.id;
+      await supabase.from('customers').update(customerPayload).eq('id', customerId);
     } else {
-      savedCustomers.push({ ...customer, lastOrderNumber: correlative });
+      const { data: newCust, error: cErr } = await supabase.from('customers').insert([customerPayload]).select().single();
+      if (cErr) { alert('Error creando cliente'); return; }
+      customerId = newCust.id;
     }
-    localStorage.setItem('fungus_customers_db', JSON.stringify(savedCustomers));
 
-    const savedSales = JSON.parse(localStorage.getItem('fungus_sales_db') || '[]');
-    localStorage.setItem('fungus_sales_db', JSON.stringify([...savedSales, newSale]));
+    // 2. Create Sale
+    const { data: newSale, error: sErr } = await supabase.from('sales').insert([{
+      order_number: correlative,
+      customer_id: customerId,
+      total: total,
+      date: saleDate,
+      status: 'Completado'
+    }]).select().single();
 
-    const updatedInv = inventory.map(invItem => {
-      const soldItem = orderLines.find(line => line.name === invItem.name);
-      if (soldItem) return { ...invItem, stock: invItem.stock - soldItem.qty };
-      return invItem;
-    });
-    localStorage.setItem('fungus_inventory', JSON.stringify(updatedInv));
+    if (sErr) { alert('Error creando venta'); return; }
 
-    alert('¡Cotización generada exitosamente!');
+    // 3. Create Sale Items and Update Inventory
+    for (const line of orderLines) {
+      const invItem = inventory.find(i => i.name === line.name);
+      await supabase.from('sale_items').insert({
+        sale_id: newSale.id,
+        inventory_item_id: invItem?.id,
+        item_name: line.name,
+        qty: line.qty,
+        price: line.price,
+        cost: invItem?.cost
+      });
+
+      if (invItem) {
+        await supabase.from('inventory_items').update({
+          stock: invItem.stock - line.qty
+        }).eq('id', invItem.id);
+      }
+    }
+
+    alert('¡Venta guardada exitosamente en la base de datos!');
     onBack();
   };
 
@@ -179,12 +316,21 @@ const SalesOrder: React.FC<Props> = ({ onBack }) => {
       <header className="pt-12 px-8 pb-6 bg-background-dark/95 border-b border-surface-accent print:hidden">
         <div className="flex justify-between items-center mb-8">
           <div className="flex items-center gap-4">
-            <button onClick={onBack} className="p-2 bg-surface-dark text-slate-400 rounded-xl hover:text-white transition-all"><span className="material-icons-round">arrow_back</span></button>
+            <button onClick={onBack} className="p-2 bg-surface-dark text-slate-400 rounded-xl hover:text-white transition-all transition-colors print:hidden"><span className="material-icons-round">arrow_back</span></button>
             <div>
-              <h1 className="text-2xl font-black text-white tracking-tight">Nueva Cotización</h1>
-              <p className="text-[10px] text-primary font-bold uppercase tracking-widest">Paso {step} de 3 • Fungus Mycelium Ltda</p>
+              <h1 className="text-2xl font-black text-white tracking-tight print:hidden">Nueva Cotización</h1>
+              <p className="text-[10px] text-primary font-bold uppercase tracking-widest print:hidden">Paso {step} de 3 • Fungus Mycelium Ltda</p>
             </div>
           </div>
+          {step === 3 && (
+            <button
+              onClick={() => window.print()}
+              className="px-6 py-2 bg-primary text-white font-black rounded-xl shadow-lg flex items-center gap-2 hover:scale-105 transition-all print:hidden"
+            >
+              <span className="material-icons-round text-sm">download</span>
+              Descargar PDF
+            </button>
+          )}
         </div>
 
         <div className="flex items-center justify-between max-w-2xl mx-auto px-4">
@@ -209,9 +355,53 @@ const SalesOrder: React.FC<Props> = ({ onBack }) => {
               <section className="bg-surface-dark/40 p-8 rounded-[2rem] border border-surface-accent space-y-6 shadow-xl">
                 <h3 className="text-xs font-black text-primary uppercase tracking-widest border-l-2 border-primary pl-3 mb-2">Información del Cliente</h3>
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="col-span-2">
+                  <div className="col-span-2 space-y-2 relative">
                     <label className="text-[9px] font-black text-slate-500 uppercase mb-1 block">RUT *</label>
-                    <input value={customer.rut} onChange={e => setCustomer({ ...customer, rut: e.target.value })} className="w-full bg-background-dark border-surface-accent border rounded-xl py-3 px-4 text-white text-sm" placeholder="12345678-9" />
+                    <input
+                      value={customer.rut}
+                      onChange={e => {
+                        const val = formatRut(e.target.value);
+                        setCustomer({ ...customer, rut: val });
+                        searchCustomer(val);
+                      }}
+                      onFocus={() => {
+                        if (matchingCustomers.length > 0) setShowAutocomplete(true);
+                      }}
+                      className="w-full bg-background-dark border-surface-accent border rounded-xl py-3 px-4 text-white text-sm"
+                      placeholder="12345678-9"
+                    />
+                    {showAutocomplete && (
+                      <div className="absolute z-50 w-full mt-1 bg-surface-dark border border-surface-accent rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                        {matchingCustomers.map(c => (
+                          <button
+                            key={c.id}
+                            onClick={() => selectCustomer(c)}
+                            className="w-full text-left px-4 py-3 hover:bg-primary/20 border-b border-white/5 last:border-0 transition-colors"
+                          >
+                            <div className="flex justify-between items-center">
+                              <div>
+                                <p className="text-sm font-bold text-white">{c.isCompany ? c.businessName : `${c.firstName} ${c.lastName}`}</p>
+                                <p className="text-[10px] text-slate-400 font-mono">{c.rut}</p>
+                              </div>
+                              <span className="material-icons-round text-primary text-sm">arrow_forward</span>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {/* Para cerrar al hacer click fuera */}
+                    {showAutocomplete && (
+                      <div className="fixed inset-0 z-40" onClick={() => setShowAutocomplete(false)}></div>
+                    )}
+                  </div>
+                  <div className="col-span-2 space-y-2">
+                    <label className="text-[9px] font-black text-slate-500 uppercase mb-1 block">Fecha de Venta *</label>
+                    <input
+                      type="date"
+                      value={saleDate}
+                      onChange={e => setSaleDate(e.target.value)}
+                      className="w-full bg-background-dark border-surface-accent border rounded-xl py-3 px-4 text-white text-sm"
+                    />
                   </div>
                   {customer.isCompany ? (
                     <div className="col-span-2 space-y-4">
@@ -232,10 +422,27 @@ const SalesOrder: React.FC<Props> = ({ onBack }) => {
                 <h3 className="text-xs font-black text-primary uppercase tracking-widest border-l-2 border-primary pl-3 mb-2">Logística y Despacho</h3>
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 gap-2">
-                    <select value={customer.region} onChange={e => setCustomer({ ...customer, region: e.target.value })} className="w-full bg-background-dark border-surface-accent border rounded-xl py-3 px-4 text-white text-sm">
+                    <select
+                      value={customer.region}
+                      onChange={e => {
+                        const newReg = e.target.value;
+                        setCustomer({
+                          ...customer,
+                          region: newReg,
+                          commune: (COMUNAS_POR_REGION[newReg] || [])[0] || ''
+                        });
+                      }}
+                      className="w-full bg-background-dark border-surface-accent border rounded-xl py-3 px-4 text-white text-sm"
+                    >
                       {REGIONES_CHILE.map(r => <option key={r} value={r}>{r}</option>)}
                     </select>
-                    <input value={customer.commune} onChange={e => setCustomer({ ...customer, commune: e.target.value })} placeholder="Comuna *" className="w-full bg-background-dark border-surface-accent border rounded-xl py-3 px-4 text-white text-sm" />
+                    <select
+                      value={customer.commune}
+                      onChange={e => setCustomer({ ...customer, commune: e.target.value })}
+                      className="w-full bg-background-dark border-surface-accent border rounded-xl py-3 px-4 text-white text-sm"
+                    >
+                      {(COMUNAS_POR_REGION[customer.region || ''] || []).map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
                   </div>
                   <input value={customer.address} onChange={e => setCustomer({ ...customer, address: e.target.value })} className="w-full bg-background-dark border-surface-accent border rounded-xl py-3 px-4 text-white text-sm" placeholder="Dirección Solo si va a domicilio *" />
 
@@ -281,15 +488,60 @@ const SalesOrder: React.FC<Props> = ({ onBack }) => {
             <div className="space-y-4">
               {orderLines.map(line => (
                 <div key={line.id} className="bg-surface-dark p-6 rounded-[2.5rem] border border-surface-accent grid grid-cols-12 gap-6 items-center group shadow-xl">
-                  <div className="col-span-6">
-                    <select
+                  <div className="col-span-6 relative">
+                    <input
                       value={line.name}
-                      onChange={(e) => updateOrderLine(line.id, 'name', e.target.value)}
-                      className="w-full bg-background-dark border-surface-accent border rounded-2xl py-3 px-4 text-sm text-white focus:ring-1 focus:ring-primary"
-                    >
-                      <option value="">Seleccionar Producto...</option>
-                      {inventory.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
-                    </select>
+                      onChange={(e) => {
+                        updateOrderLine(line.id, 'name', e.target.value);
+                        searchStandardProduct(e.target.value);
+                        setShowProductAutocompleteId(line.id);
+                      }}
+                      onFocus={() => {
+                        searchStandardProduct(line.name);
+                        setShowProductAutocompleteId(line.id);
+                      }}
+                      className="w-full bg-background-dark border-surface-accent border rounded-2xl py-3 px-4 text-sm text-white focus:ring-1 focus:ring-primary uppercase"
+                      placeholder="Nombre del Producto..."
+                    />
+                    {showProductAutocompleteId === line.id && matchingStandardProducts.length > 0 && (
+                      <div className="absolute z-50 w-full mt-1 bg-surface-dark border border-surface-accent rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                        {matchingStandardProducts.map(p => (
+                          <button
+                            key={p.id}
+                            onClick={() => selectStandardProductForLine(line.id, p)}
+                            className="w-full text-left px-4 py-3 hover:bg-primary/20 border-b border-white/5 last:border-0 transition-colors"
+                          >
+                            <div className="flex justify-between items-center">
+                              <div className="flex items-center gap-3">
+                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${p.is_inventory ? 'bg-success/10 text-success' : 'bg-primary/10 text-primary'}`}>
+                                  <span className="material-icons-round text-xs">{p.is_inventory ? 'inventory_2' : 'fact_check'}</span>
+                                </div>
+                                <div>
+                                  <p className="text-sm font-black text-white uppercase">{p.name}</p>
+                                  <p className="text-[10px] text-slate-500 font-bold uppercase">{p.is_inventory ? 'En Inventario' : 'Catálogo Maestro'}</p>
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                {p.is_inventory ? (
+                                  <>
+                                    <p className={`text-[10px] font-black uppercase ${p.stock <= 3 ? 'text-danger' : 'text-success'}`}>{p.stock} DISP.</p>
+                                    <p className="text-xs font-black text-white font-mono tracking-tighter">${Number(p.default_price).toLocaleString('es-CL')}</p>
+                                  </>
+                                ) : (
+                                  <>
+                                    <p className="text-[10px] text-slate-500 uppercase">Precio Sug.</p>
+                                    <p className="text-xs font-black text-white font-mono tracking-tighter">${Number(p.default_price).toLocaleString('es-CL')}</p>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {showProductAutocompleteId === line.id && (
+                      <div className="fixed inset-0 z-40" onClick={() => setShowProductAutocompleteId(null)}></div>
+                    )}
                   </div>
                   <div className="col-span-2">
                     <input type="number" value={line.qty} onChange={e => updateOrderLine(line.id, 'qty', parseInt(e.target.value) || 0)} className="w-full bg-background-dark border-surface-accent border rounded-2xl py-3 px-4 text-sm text-white text-center font-mono" />

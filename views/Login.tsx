@@ -113,15 +113,6 @@ const Login: React.FC = () => {
                     </button>
                 </div>
 
-                <button
-                    onClick={() => {
-                        localStorage.setItem('fungus_guest_mode', 'true');
-                        window.location.reload();
-                    }}
-                    className="mt-4 w-full py-3 bg-slate-800 text-slate-400 text-[10px] font-black rounded-xl hover:text-white transition-colors uppercase tracking-widest"
-                >
-                    Entrar como Invitado (Sin Registro)
-                </button>
             </div>
         </div>
     );

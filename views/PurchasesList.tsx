@@ -9,9 +9,10 @@ const mapPurchaseRecord = (p: any): PurchaseRecord => ({
   rut: p.rut,
   docNumber: p.doc_number,
   docType: p.doc_type,
-  date: new Date(p.date).toLocaleDateString('es-CL'),
+  date: p.date,
   total: Number(p.total),
   paymentMethod: p.payment_method,
+  category: p.category || 'Insumos',
   items: p.items?.map((i: any) => ({
     id: i.id,
     name: i.item_name,
@@ -97,6 +98,7 @@ const PurchasesList: React.FC<{ onNew: () => void }> = ({ onNew }) => {
             <tr>
               <th className="p-5 text-[10px] font-black uppercase text-slate-500">Folio</th>
               <th className="p-5 text-[10px] font-black uppercase text-slate-500">Proveedor</th>
+              <th className="p-5 text-[10px] font-black uppercase text-slate-500">Categoría</th>
               <th className="p-5 text-[10px] font-black uppercase text-slate-500">Fecha</th>
               <th className="p-5 text-[10px] font-black uppercase text-slate-500 text-right">Monto Total</th>
               <th className="p-5 text-[10px] font-black uppercase text-slate-500 text-center">Acciones</th>
@@ -110,7 +112,15 @@ const PurchasesList: React.FC<{ onNew: () => void }> = ({ onNew }) => {
                   <p className="text-sm font-bold text-white">{p.provider}</p>
                   <p className="text-[10px] text-slate-500">{p.rut}</p>
                 </td>
-                <td className="p-5 text-sm text-slate-400">{p.date}</td>
+                <td className="p-5">
+                  <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border ${p.category === 'Activos' ? 'bg-amber-500/20 text-amber-500 border-amber-500/30' :
+                    p.category === 'Venta' ? 'bg-success/20 text-success border-success/30' :
+                      'bg-primary/20 text-primary border-primary/30'
+                    }`}>
+                    {p.category || 'Insumos'}
+                  </span>
+                </td>
+                <td className="p-5 text-sm text-slate-400">{new Date(p.date).toLocaleDateString('es-CL')}</td>
                 <td className="p-5 text-right font-black font-mono text-white text-base">${p.total.toLocaleString('es-CL')}</td>
                 <td className="p-5">
                   <div className="flex gap-2 justify-center">
@@ -139,7 +149,10 @@ const PurchasesList: React.FC<{ onNew: () => void }> = ({ onNew }) => {
               <div className="text-right">
                 <p className="text-[10px] font-black text-slate-600 uppercase">Documento</p>
                 <p className="font-black text-lg text-black">{selectedPurchase.docType} N° {selectedPurchase.docNumber}</p>
-                <p className="text-xs text-slate-800 font-bold">{selectedPurchase.date}</p>
+                <div className="flex items-center justify-end gap-2 mt-1">
+                  <span className="text-[9px] font-black text-white px-2 py-0.5 bg-slate-900 rounded-lg uppercase tracking-widest">{selectedPurchase.category || 'Insumos'}</span>
+                  <p className="text-xs text-slate-800 font-bold">{new Date(selectedPurchase.date).toLocaleDateString('es-CL')}</p>
+                </div>
               </div>
             </div>
             <table className="w-full text-left mb-8 border-collapse">

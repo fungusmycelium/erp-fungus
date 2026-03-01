@@ -7,7 +7,7 @@ const mapSaleRecord = (s: any): SaleRecord => ({
   id: s.id,
   orderNumber: s.order_number,
   customerName: s.customer ? (s.customer.is_company ? s.customer.business_name : `${s.customer.first_name} ${s.customer.last_name}`) : 'Cliente Desconocido',
-  date: new Date(s.date).toLocaleDateString('es-CL'),
+  date: s.date,
   total: Number(s.total),
   status: s.status,
   items: s.items?.map((i: any) => ({
@@ -163,7 +163,7 @@ const SalesList: React.FC<Props> = ({ onNew }) => {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-[10px] font-mono font-bold text-primary bg-primary/10 px-1.5 py-0.5 rounded">{sale.orderNumber}</span>
-                    <span className="text-[9px] text-slate-500 font-bold">{sale.date}</span>
+                    <span className="text-[9px] text-slate-500 font-bold">{new Date(sale.date).toLocaleDateString('es-CL')}</span>
                   </div>
                   <h3 className="font-bold text-white text-sm truncate">{sale.customerName}</h3>
                 </div>
@@ -201,7 +201,7 @@ const SalesList: React.FC<Props> = ({ onNew }) => {
                   <h2 className="text-2xl font-black text-black tracking-tighter leading-none mb-1">Fungus Mycelium Ltda</h2>
                   <p className="text-[10px] font-bold text-slate-700 uppercase tracking-widest">RUT: 77.692.324-9</p>
                   <p className="text-[10px] text-primary font-black">Fumycelium@gmail.com</p>
-                  <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{selectedSale.date}</p>
+                  <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{new Date(selectedSale.date).toLocaleDateString('es-CL')}</p>
                 </div>
               </div>
               <div className="text-right">

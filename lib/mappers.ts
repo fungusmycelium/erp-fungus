@@ -1,4 +1,4 @@
-import { SaleRecord, PurchaseRecord, InventoryItem, Customer, OrderItem, ShippingMethod } from '../types';
+import { SaleRecord, PurchaseRecord, InventoryItem, Customer, OrderItem, ShippingMethod, StandardProduct } from '../types';
 
 export const mapCustomer = (c: any): Customer => ({
     id: c.id,
@@ -23,7 +23,7 @@ export const mapSaleRecord = (s: any): SaleRecord => ({
     id: s.id,
     orderNumber: s.order_number,
     customerName: s.customer ? (s.customer.is_company ? s.customer.business_name : `${s.customer.first_name} ${s.customer.last_name}`) : 'Cliente Desconocido',
-    date: new Date(s.date).toLocaleDateString('es-CL'),
+    date: s.date, // ISO String for logic
     total: Number(s.total),
     status: s.status,
     items: s.items?.map((i: any) => ({
@@ -41,9 +41,10 @@ export const mapPurchaseRecord = (p: any): PurchaseRecord => ({
     rut: p.rut,
     docNumber: p.doc_number,
     docType: p.doc_type,
-    date: new Date(p.date).toLocaleDateString('es-CL'),
+    date: p.date, // ISO String for logic
     total: Number(p.total),
     paymentMethod: p.payment_method,
+    category: p.category || 'Insumos',
     items: p.items?.map((i: any) => ({
         id: i.id,
         name: i.item_name,
@@ -61,4 +62,13 @@ export const mapInventoryItem = (i: any): InventoryItem => ({
     cost: Number(i.cost),
     category: i.category,
     imageUrl: i.image_url
+});
+
+export const mapStandardProduct = (p: any): StandardProduct => ({
+    id: p.id,
+    name: p.name,
+    category: p.category || '',
+    type: p.type,
+    defaultPrice: Number(p.default_price || 0),
+    defaultCost: Number(p.default_cost || 0)
 });

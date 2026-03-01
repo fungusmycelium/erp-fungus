@@ -1,14 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { View, UserRole } from './types';
+
+export type ExtendedRole = 'CEO' | 'SUPERVISOR' | 'VENDEDOR' | 'ADMIN' | 'OPERATOR';
+
 import Dashboard from './views/Dashboard';
 import SalesOrder from './views/SalesOrder';
 import PurchaseRegistry from './views/PurchaseRegistry';
 import Analysis from './views/Analysis';
+import Users from './views/Users';
 import CRM from './views/CRM';
 import SalesList from './views/SalesList';
 import PurchasesList from './views/PurchasesList';
 import Inventory from './views/Inventory';
 import ProductCatalog from './views/ProductCatalog';
+import ProductManager from './views/ProductManager';
 import Finance from './views/Finance';
 import Sidebar from './components/Sidebar';
 import Login from './views/Login';
@@ -22,16 +27,9 @@ const App: React.FC = () => {
         return (localStorage.getItem('fungus_user_role') as UserRole) || 'ADMIN';
     });
     const [loading, setLoading] = useState(true);
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
     useEffect(() => {
-        const isGuest = localStorage.getItem('fungus_guest_mode') === 'true';
-        if (isGuest) {
-            setSession({ user: { id: 'guest', email: 'invitado@erp.com' } } as any);
-            setUserRole('ADMIN');
-            setLoading(false);
-            return;
-        }
-
         supabase.auth.getSession().then(({ data: { session } }) => {
             setSession(session);
             setLoading(false);
@@ -55,9 +53,46 @@ const App: React.FC = () => {
             .eq('id', userId)
             .single();
 
+        const isEmergencyCEO = session?.user.email === 'italotavonatti@gmail.com';
+
         if (data) {
-            setUserRole(data.role as UserRole);
-            localStorage.setItem('fungus_user_role', data.role);
+            let role = data.role as UserRole;
+            // Force CEO role for the owner if not already set or if it changed
+            if (isEmergencyCEO && role !== 'CEO') {
+                role = 'CEO';
+                await supabase.from('profiles').update({
+                    role: 'CEO',
+                    email: session?.user.email,
+                    full_name: (session?.user.user_metadata as any)?.full_name || (session?.user.user_metadata as any)?.name
+                }).eq('id', userId);
+            } else if (session?.user.email) {
+                // Keep email and name synced
+                await supabase.from('profiles').update({
+                    email: session.user.email,
+                    full_name: (session?.user.user_metadata as any)?.full_name || (session?.user.user_metadata as any)?.name
+                }).eq('id', userId);
+            }
+            setUserRole(role);
+            localStorage.setItem('fungus_user_role', role);
+        } else if (error && session) {
+            // Profile doesn't exist, create it
+            const { count } = await supabase.from('profiles').select('*', { count: 'exact', head: true });
+            const isFirstUser = count === 0;
+            const newRole: UserRole = (isFirstUser || isEmergencyCEO) ? 'CEO' : 'VENDEDOR';
+
+            const { error: insertError } = await supabase.from('profiles').insert([
+                {
+                    id: userId,
+                    role: newRole,
+                    email: session.user.email,
+                    full_name: (session?.user.user_metadata as any)?.full_name || (session?.user.user_metadata as any)?.name
+                }
+            ]);
+
+            if (!insertError) {
+                setUserRole(newRole);
+                localStorage.setItem('fungus_user_role', newRole);
+            }
         }
     };
 
@@ -66,7 +101,6 @@ const App: React.FC = () => {
     }, [userRole]);
 
     const handleLogout = async () => {
-        localStorage.removeItem('fungus_guest_mode');
         localStorage.removeItem('fungus_user_role');
         await supabase.auth.signOut();
         setSession(null);
@@ -107,6 +141,10 @@ const App: React.FC = () => {
                 return <PurchaseRegistry onBack={() => setCurrentView(View.PURCHASES_LIST)} />;
             case View.ANALYSIS:
                 return <Analysis />;
+            case View.USERS:
+                return <Users currentRole={(userRole as any)} />;
+            case View.STANDARD_PRODUCTS:
+                return <ProductManager />;
             default:
                 return <Dashboard onNewSale={() => setCurrentView(View.SALES_ORDER)} />;
         }
@@ -115,18 +153,40 @@ const App: React.FC = () => {
     const isFullscreenView = [View.SALES_ORDER, View.PURCHASE_REGISTRY].includes(currentView);
 
     return (
-        <div className="flex h-screen w-full bg-background-dark text-slate-100 overflow-hidden font-display">
+        <div className="flex h-screen w-full bg-background-dark text-slate-100 overflow-hidden font-display relative">
             {!isFullscreenView && (
-                <Sidebar
-                    activeView={currentView}
-                    setView={setCurrentView}
-                    role={userRole}
-                    setRole={setUserRole}
-                    onLogout={handleLogout}
-                />
+                <>
+                    {/* Burger Menu for Mobile */}
+                    <button
+                        onClick={() => setIsSidebarOpen(true)}
+                        className="md:hidden fixed top-6 left-6 z-40 p-2 bg-surface-dark border border-surface-accent rounded-xl text-primary"
+                    >
+                        <span className="material-icons-round">menu</span>
+                    </button>
+
+                    <Sidebar
+                        currentView={currentView}
+                        setCurrentView={(view) => {
+                            setCurrentView(view);
+                            setIsSidebarOpen(false); // Close on mobile navigation
+                        }}
+                        isOpen={isSidebarOpen}
+                        onClose={() => setIsSidebarOpen(false)}
+                        userRole={(userRole as any)}
+                        onLogout={handleLogout}
+                    />
+
+                    {/* Mobile Overlay */}
+                    {isSidebarOpen && (
+                        <div
+                            className="fixed inset-0 bg-black/60 z-40 md:hidden animate-in fade-in duration-300"
+                            onClick={() => setIsSidebarOpen(false)}
+                        />
+                    )}
+                </>
             )}
 
-            <main className={`flex-1 overflow-y-auto bg-background-dark ${isFullscreenView ? '' : 'p-2'}`}>
+            <main className={`flex-1 overflow-y-auto bg-background-dark transition-all duration-300 ${isFullscreenView ? '' : 'p-2 pt-20 md:pt-2'}`}>
                 <div className={`h-full ${isFullscreenView ? '' : 'rounded-3xl border border-surface-accent bg-surface-dark/30 shadow-inner'}`}>
                     {renderView()}
                 </div>

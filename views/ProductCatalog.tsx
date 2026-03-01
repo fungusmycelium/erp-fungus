@@ -48,7 +48,7 @@ const ProductCatalog: React.FC = () => {
   };
 
   const filtered = products.filter(p =>
-    p.name.toLowerCase().includes(search.toLowerCase())
+    p.stock > 0 && p.name.toLowerCase().includes(search.toLowerCase())
   );
 
   return (

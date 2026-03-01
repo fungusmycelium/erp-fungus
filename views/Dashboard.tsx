@@ -39,20 +39,17 @@ const Dashboard: React.FC<{ onNewSale: () => void }> = ({ onNewSale }) => {
     const todayStr = now.toLocaleDateString('es-CL');
 
     const monthlySales = sales.filter(s => {
-      const parts = s.date.split('/');
-      if (parts.length === 3) {
-        const d = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
-        return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
-      }
-      return false;
+      const d = new Date(s.date);
+      return d.getUTCMonth() === currentMonth && d.getUTCFullYear() === currentYear;
     });
 
-    const dailySalesTotal = sales.filter(s => s.date === todayStr)
+    const todayISO = now.toISOString().split('T')[0];
+    const dailySalesTotal = sales.filter(s => s.date.startsWith(todayISO))
       .reduce((acc, curr) => acc + curr.total, 0);
 
     const monthlyPurchases = purchases.filter(p => {
       const d = new Date(p.date);
-      return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+      return d.getUTCMonth() === currentMonth && d.getUTCFullYear() === currentYear;
     });
 
     const totalSales = monthlySales.reduce((acc, curr) => acc + curr.total, 0);
@@ -61,6 +58,11 @@ const Dashboard: React.FC<{ onNewSale: () => void }> = ({ onNewSale }) => {
     const margin = totalSales > 0 ? (profit / totalSales) * 100 : 0;
     const inventoryValue = inventory.reduce((acc, curr) => acc + (curr.stock * curr.lastPrice), 0);
 
+    // IVA Calculations (19%)
+    const ivaVentas = monthlySales.reduce((acc, s) => acc + (s.total - Math.round(s.total / 1.19)), 0);
+    const ivaCompras = monthlyPurchases.reduce((acc, p) => acc + (p.total - Math.round(p.total / 1.19)), 0);
+    const ivaNeto = ivaVentas - ivaCompras;
+
     // Calcular producto más vendido
     const productCounts: Record<string, number> = {};
     monthlySales.forEach(sale => {
@@ -68,9 +70,11 @@ const Dashboard: React.FC<{ onNewSale: () => void }> = ({ onNewSale }) => {
         productCounts[item.name] = (productCounts[item.name] || 0) + item.qty;
       });
     });
-    const topProduct = Object.entries(productCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || 'N/A';
+    const sortedProducts = Object.entries(productCounts).sort((a, b) => b[1] - a[1]);
+    const topProduct = sortedProducts[0]?.[0] || 'N/A';
+    const topProductQty = sortedProducts[0]?.[1] || 0;
 
-    return { totalSales, dailySalesTotal, totalPurchases, profit, margin, inventoryValue, topProduct };
+    return { totalSales, dailySalesTotal, totalPurchases, profit, margin, inventoryValue, topProduct, topProductQty, ivaVentas, ivaCompras, ivaNeto };
   }, [sales, purchases, inventory]);
 
   const generateProjection = async () => {
@@ -121,39 +125,46 @@ const Dashboard: React.FC<{ onNewSale: () => void }> = ({ onNewSale }) => {
   }, [projectionPeriod, sales]);
 
   return (
-    <div className="p-8 h-full bg-background-dark overflow-y-auto hide-scrollbar pb-32">
-      <header className="flex justify-between items-end mb-12">
+    <div className="p-4 md:p-8 h-full bg-background-dark overflow-y-auto hide-scrollbar pb-32">
+      <header className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-12">
         <div>
-          <h1 className="text-4xl font-black text-white tracking-tighter leading-none">Fungus Executive Control</h1>
-          <p className="text-primary font-bold uppercase tracking-[0.4em] text-[10px] mt-3">SISTEMA DE GESTIÓN CORPORATIVA • FUNGUS MYCELIUM LTDA</p>
+          <h1 className="text-3xl md:text-4xl font-black text-white tracking-tighter leading-none">Fungus Executive Control</h1>
+          <p className="text-primary font-bold uppercase tracking-[0.4em] text-[8px] md:text-[10px] mt-3">SISTEMA DE GESTIÓN CORPORATIVA • FUNGUS MYCELIUM LTDA</p>
         </div>
-        <button onClick={onNewSale} className="px-10 py-4 bg-primary text-white font-black rounded-2xl shadow-2xl shadow-primary/20 hover:scale-105 active:scale-95 transition-all flex items-center gap-3">
+        <button onClick={onNewSale} className="w-full md:w-auto px-10 py-4 bg-primary text-white font-black rounded-2xl shadow-2xl shadow-primary/20 hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-3">
           <span className="material-icons-round">add_shopping_cart</span> NUEVA COTIZACIÓN
         </button>
       </header>
 
       <main className="grid grid-cols-12 gap-8">
-        <section className="col-span-12 grid grid-cols-4 gap-6">
-          <div className="bg-surface-dark p-8 rounded-[2rem] border border-surface-accent shadow-xl group hover:border-primary/40 transition-all">
+        <section className="col-span-12 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="bg-surface-dark p-6 md:p-8 rounded-[2rem] border border-surface-accent shadow-xl group hover:border-primary/40 transition-all">
             <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4">Facturación Mensual</p>
-            <p className="text-3xl font-black text-white font-mono">${stats.totalSales.toLocaleString('es-CL')}</p>
+            <p className="text-2xl md:text-3xl font-black text-white font-mono">${stats.totalSales.toLocaleString('es-CL')}</p>
             <p className="text-[10px] text-success font-bold mt-3 flex items-center gap-1">
               <span className="material-icons-round text-xs">today</span> Venta Hoy: ${stats.dailySalesTotal.toLocaleString('es-CL')}
             </p>
           </div>
-          <div className="bg-surface-dark p-8 rounded-[2rem] border border-surface-accent shadow-xl group hover:border-primary/40 transition-all">
-            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4">Inversión en Insumos</p>
-            <p className="text-3xl font-black text-white font-mono">${stats.totalPurchases.toLocaleString('es-CL')}</p>
-            <p className="text-[10px] text-warning font-black mt-3 uppercase">Egresos del Mes</p>
+          <div className="bg-surface-dark p-6 md:p-8 rounded-[2rem] border border-surface-accent shadow-xl group hover:border-primary/40 transition-all relative overflow-hidden">
+            <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+              <span className="material-icons-round text-4xl">account_balance</span>
+            </div>
+            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4">IVA (A Pagar/Favor)</p>
+            <p className={`text-2xl md:text-3xl font-black font-mono ${stats.ivaNeto >= 0 ? 'text-warning' : 'text-success'}`}>
+              ${Math.abs(stats.ivaNeto).toLocaleString('es-CL')}
+            </p>
+            <p className={`text-[10px] font-black mt-3 uppercase ${stats.ivaNeto >= 0 ? 'text-warning' : 'text-success'}`}>
+              {stats.ivaNeto >= 0 ? 'IVA POR PAGAR' : 'IVA A FAVOR'}
+            </p>
           </div>
-          <div className="bg-surface-dark p-8 rounded-[2rem] border border-surface-accent shadow-xl group hover:border-primary/40 transition-all">
+          <div className="bg-surface-dark p-6 md:p-8 rounded-[2rem] border border-surface-accent shadow-xl group hover:border-primary/40 transition-all">
             <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4">Valor Inventario</p>
-            <p className="text-3xl font-black text-white font-mono">${stats.inventoryValue.toLocaleString('es-CL')}</p>
+            <p className="text-2xl md:text-3xl font-black text-white font-mono">${stats.inventoryValue.toLocaleString('es-CL')}</p>
             <p className="text-[10px] text-primary font-bold mt-3 uppercase tracking-tighter">Activos Circulantes</p>
           </div>
-          <div className="bg-surface-dark p-8 rounded-[2rem] border border-surface-accent shadow-xl group hover:border-primary/40 transition-all">
+          <div className="bg-surface-dark p-6 md:p-8 rounded-[2rem] border border-surface-accent shadow-xl group hover:border-primary/40 transition-all">
             <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4">Ganancia Neta (Mes)</p>
-            <p className={`text-3xl font-black font-mono ${stats.profit >= 0 ? 'text-white' : 'text-danger'}`}>
+            <p className={`text-2xl md:text-3xl font-black font-mono ${stats.profit >= 0 ? 'text-white' : 'text-danger'}`}>
               ${stats.profit.toLocaleString('es-CL')}
             </p>
             <p className={`text-[10px] font-black mt-3 ${stats.margin > 20 ? 'text-success' : 'text-warning'}`}>
@@ -163,20 +174,20 @@ const Dashboard: React.FC<{ onNewSale: () => void }> = ({ onNewSale }) => {
         </section>
 
         <section className="col-span-12 bg-surface-dark p-10 rounded-[3rem] border border-surface-accent shadow-2xl">
-          <div className="flex justify-between items-center mb-12">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-12">
             <div>
-              <h3 className="text-xl font-black text-white flex items-center gap-3 uppercase tracking-widest">
+              <h3 className="text-lg md:text-xl font-black text-white flex items-center gap-3 uppercase tracking-widest">
                 Dinámica de Ventas & IA
                 {isProjecting && <span className="w-3 h-3 bg-primary rounded-full animate-ping"></span>}
               </h3>
-              <p className="text-xs text-slate-500 uppercase tracking-[0.2em] font-bold mt-1">Estimación de Comportamiento a Futuro</p>
+              <p className="text-[10px] md:text-xs text-slate-500 uppercase tracking-[0.2em] font-bold mt-1">Estimación de Comportamiento a Futuro</p>
             </div>
-            <div className="flex bg-background-dark border border-surface-accent p-1.5 rounded-2xl">
+            <div className="flex w-full md:w-auto bg-background-dark border border-surface-accent p-1.5 rounded-2xl overflow-x-auto">
               {(['1m', '3m', '6m', '1y'] as const).map(p => (
                 <button
                   key={p}
                   onClick={() => setProjectionPeriod(p)}
-                  className={`px-6 py-2.5 text-[10px] font-black rounded-xl transition-all ${projectionPeriod === p ? 'bg-primary text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}
+                  className={`flex-1 md:flex-none px-4 md:px-6 py-2.5 text-[8px] md:text-[10px] font-black rounded-xl transition-all ${projectionPeriod === p ? 'bg-primary text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}
                 >
                   {p.toUpperCase()}
                 </button>
@@ -219,28 +230,50 @@ const Dashboard: React.FC<{ onNewSale: () => void }> = ({ onNewSale }) => {
             </div>
           </div>
 
-          <div className="grid grid-cols-4 gap-8">
-            <div className="bg-background-dark/50 p-8 rounded-[2.5rem] border border-white/5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 md:gap-8">
+            <div className="bg-background-dark/50 p-6 md:p-8 rounded-[2.5rem] border border-white/5">
               <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4">Total Facturación</p>
-              <p className="text-3xl font-black text-white font-mono">${stats.totalSales.toLocaleString('es-CL')}</p>
+              <p className="text-2xl md:text-3xl font-black text-white font-mono">${stats.totalSales.toLocaleString('es-CL')}</p>
               <div className="mt-4 h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
                 <div className="h-full bg-primary w-[75%]"></div>
               </div>
             </div>
-            <div className="bg-background-dark/50 p-8 rounded-[2.5rem] border border-white/5">
+            <div className="bg-background-dark/50 p-6 md:p-8 rounded-[2.5rem] border border-white/5">
               <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4">Inversión Realizada</p>
-              <p className="text-3xl font-black text-white font-mono">${stats.totalPurchases.toLocaleString('es-CL')}</p>
+              <p className="text-2xl md:text-3xl font-black text-white font-mono">${stats.totalPurchases.toLocaleString('es-CL')}</p>
               <p className="text-[10px] text-danger font-bold mt-2 italic">Flujo de Salida</p>
             </div>
-            <div className="bg-background-dark/50 p-8 rounded-[2.5rem] border border-white/5">
+            <div className="bg-background-dark/50 p-6 md:p-8 rounded-[2.5rem] border border-white/5">
               <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4">Utilidad Neta</p>
-              <p className="text-3xl font-black text-success font-mono">${stats.profit.toLocaleString('es-CL')}</p>
+              <p className="text-2xl md:text-3xl font-black text-success font-mono">${stats.profit.toLocaleString('es-CL')}</p>
               <p className="text-[10px] text-success font-black mt-2">PROVECHO POSITIVO</p>
             </div>
-            <div className="bg-background-dark/50 p-8 rounded-[2.5rem] border border-white/5">
-              <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4">Top Producto</p>
-              <p className="text-xl font-black text-primary uppercase leading-tight">{stats.topProduct}</p>
-              <p className="text-[10px] text-slate-500 font-bold mt-2">Líder en Ventas</p>
+            <div className="bg-background-dark/50 p-6 md:p-8 rounded-[2.5rem] border border-white/5 relative overflow-hidden group">
+              <div className="absolute -right-4 -top-4 w-24 h-24 bg-primary/10 rounded-full flex items-center justify-center rotate-12 group-hover:scale-110 transition-transform">
+                <span className="material-icons-round text-primary text-4xl">workspace_premium</span>
+              </div>
+              <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4">IVA NETO</p>
+              <p className={`text-2xl md:text-3xl font-black font-mono ${stats.ivaNeto >= 0 ? 'text-warning' : 'text-success'}`}>
+                ${Math.abs(stats.ivaNeto).toLocaleString('es-CL')}
+              </p>
+              <p className="text-[10px] text-slate-500 font-bold mt-2 uppercase">Balance Tributario</p>
+            </div>
+          </div>
+
+          <div className="mt-12 bg-white/5 p-8 rounded-[2.5rem] border border-white/10 flex flex-col md:flex-row items-center justify-between gap-6">
+            <div className="flex items-center gap-6">
+              <div className="w-16 h-16 bg-primary rounded-2xl flex items-center justify-center shadow-lg shadow-primary/20">
+                <span className="material-icons-round text-white text-3xl">trending_up</span>
+              </div>
+              <div>
+                <p className="text-[10px] font-black text-primary uppercase tracking-widest">Producto más vendido del mes</p>
+                <h3 className="text-2xl font-black text-white uppercase">{stats.topProduct}</h3>
+                <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">Líder con {stats.topProductQty} unidades vendidas</p>
+              </div>
+            </div>
+            <div className="hidden lg:block text-right">
+              <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-1">Impacto comercial</p>
+              <p className="text-xs text-white font-bold italic">“El producto estrella de tu operación este mes”</p>
             </div>
           </div>
 

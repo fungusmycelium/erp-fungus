@@ -16,6 +16,7 @@ const mapInventoryItem = (item: any): InventoryItem => ({
 const Inventory: React.FC = () => {
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [search, setSearch] = useState('');
+  const [showOutOfStock, setShowOutOfStock] = useState(false);
 
   const fetchInventory = async () => {
     const { data, error } = await supabase.from('inventory_items').select('*');
@@ -47,9 +48,11 @@ const Inventory: React.FC = () => {
     };
   }, []);
 
-  const filtered = inventory.filter(item =>
-    item.name.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = inventory.filter(item => {
+    const matchesSearch = item.name.toLowerCase().includes(search.toLowerCase());
+    const matchesStock = showOutOfStock || item.stock > 0;
+    return matchesSearch && matchesStock;
+  });
 
   const getStockBadgeColor = (stock: number) => {
     if (stock <= 3) return 'bg-danger/10 text-danger border border-danger/20';
@@ -66,9 +69,18 @@ const Inventory: React.FC = () => {
         </div>
         <div className="flex gap-6 items-center">
           <div className="flex bg-surface-dark border border-surface-accent p-1 rounded-xl">
-            <button className="px-4 py-2 text-xs font-bold bg-primary text-white rounded-lg">Todos</button>
-            <button className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-300">Insumos</button>
-            <button className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-300">Productos Terminado</button>
+            <button
+              onClick={() => setShowOutOfStock(false)}
+              className={`px-4 py-2 text-xs font-bold rounded-lg transition-all ${!showOutOfStock ? 'bg-primary text-white' : 'text-slate-500 hover:text-slate-300'}`}
+            >
+              En Stock
+            </button>
+            <button
+              onClick={() => setShowOutOfStock(true)}
+              className={`px-4 py-2 text-xs font-bold rounded-lg transition-all ${showOutOfStock ? 'bg-primary text-white' : 'text-slate-500 hover:text-slate-300'}`}
+            >
+              Todos
+            </button>
           </div>
           <div className="relative w-80">
             <span className="absolute left-4 top-1/2 -translate-y-1/2 material-icons-round text-slate-500">search</span>
