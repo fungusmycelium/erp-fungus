@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { PurchaseRecord } from '../types';
+import Pagination from '../components/Pagination';
 
 const mapPurchaseRecord = (p: any): PurchaseRecord => ({
   id: p.id,
@@ -26,6 +27,10 @@ const PurchasesList: React.FC<{ onNew: () => void }> = ({ onNew }) => {
   const [purchases, setPurchases] = useState<PurchaseRecord[]>([]);
   const [search, setSearch] = useState('');
   const [viewingId, setViewingId] = useState<string | null>(null);
+
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(20);
 
   const fetchPurchases = async () => {
     const { data, error } = await supabase
@@ -71,6 +76,17 @@ const PurchasesList: React.FC<{ onNew: () => void }> = ({ onNew }) => {
     p.provider.toLowerCase().includes(search.toLowerCase()) || p.docNumber.includes(search)
   );
 
+  const totalPages = Math.ceil(filtered.length / itemsPerPage);
+  const paginatedPurchases = filtered.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
+
+  // Reset to first page when searching
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search]);
+
   const selectedPurchase = purchases.find(p => p.id === viewingId);
 
   return (
@@ -105,7 +121,7 @@ const PurchasesList: React.FC<{ onNew: () => void }> = ({ onNew }) => {
             </tr>
           </thead>
           <tbody className="divide-y divide-surface-accent">
-            {filtered.map(p => (
+            {paginatedPurchases.map(p => (
               <tr key={p.id} className="hover:bg-primary/5 transition-colors group">
                 <td className="p-5 font-mono text-primary font-bold">{p.docNumber}</td>
                 <td className="p-5">
@@ -132,6 +148,17 @@ const PurchasesList: React.FC<{ onNew: () => void }> = ({ onNew }) => {
             ))}
           </tbody>
         </table>
+
+        <div className="p-4 bg-surface-dark border-t border-surface-accent">
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            onPageChange={setCurrentPage}
+            itemsPerPage={itemsPerPage}
+            onItemsPerPageChange={setItemsPerPage}
+            totalItems={filtered.length}
+          />
+        </div>
       </div>
 
       {/* MODAL VISUALIZADOR */}

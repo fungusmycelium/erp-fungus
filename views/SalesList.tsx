@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { SaleRecord, OrderItem, Customer } from '../types';
+import Pagination from '../components/Pagination';
 
 const mapSaleRecord = (s: any): SaleRecord => ({
   id: s.id,
@@ -47,6 +48,10 @@ const SalesList: React.FC<Props> = ({ onNew }) => {
   const [editForm, setEditForm] = useState<SaleRecord | null>(null);
   const [search, setSearch] = useState('');
   const [logoUrl] = useState<string | null>(() => localStorage.getItem('fungus_company_logo'));
+
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(20);
 
   const fetchSales = async () => {
     const { data, error } = await supabase
@@ -120,6 +125,17 @@ const SalesList: React.FC<Props> = ({ onNew }) => {
     s.customerName.toLowerCase().includes(search.toLowerCase())
   );
 
+  const totalPages = Math.ceil(filteredSales.length / itemsPerPage);
+  const paginatedSales = filteredSales.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
+
+  // Reset to first page when searching
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search]);
+
   const selectedSale = sales.find(s => s.id === viewingId);
 
   return (
@@ -141,7 +157,7 @@ const SalesList: React.FC<Props> = ({ onNew }) => {
       </header>
 
       <main className="px-5 py-6 space-y-4">
-        {filteredSales.map(sale => (
+        {paginatedSales.map(sale => (
           <div key={sale.id} className={`bg-surface-dark/40 border rounded-2xl transition-all ${editingId === sale.id ? 'border-primary ring-1 ring-primary/20 p-5' : 'border-surface-accent p-4'}`}>
             {editingId === sale.id ? (
               <div className="space-y-4 animate-in fade-in zoom-in-95 duration-200">
@@ -178,6 +194,15 @@ const SalesList: React.FC<Props> = ({ onNew }) => {
             )}
           </div>
         ))}
+
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          onPageChange={setCurrentPage}
+          itemsPerPage={itemsPerPage}
+          onItemsPerPageChange={setItemsPerPage}
+          totalItems={filteredSales.length}
+        />
       </main>
 
       {/* Modal Visualizador de Cotización */}

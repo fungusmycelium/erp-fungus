@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { Customer, ShippingMethod } from '../types';
 import { formatRut } from '../lib/utils';
+import Pagination from '../components/Pagination';
 
 const mapCustomer = (c: any): Customer => ({
   id: c.id,
@@ -47,6 +48,10 @@ const CRM: React.FC = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Customer | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(12);
 
   const fetchCustomers = async () => {
     const { data, error } = await supabase.from('customers').select('*');
@@ -146,6 +151,17 @@ const CRM: React.FC = () => {
     c.rut.includes(searchTerm)
   );
 
+  const totalPages = Math.ceil(filteredCustomers.length / itemsPerPage);
+  const paginatedCustomers = filteredCustomers.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
+
+  // Reset to first page when searching
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm]);
+
   return (
     <div className="p-8 bg-background-dark min-h-screen">
       <header className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-10">
@@ -221,7 +237,7 @@ const CRM: React.FC = () => {
                 </div>
               </div>
             )}
-            {filteredCustomers.map(customer => (
+            {paginatedCustomers.map(customer => (
               <div key={customer.id} className={`bg-surface-dark rounded-[2.5rem] border transition-all duration-300 overflow-hidden ${editingId === customer.id ? 'border-primary ring-4 ring-primary/10' : 'border-surface-accent hover:border-primary/40'}`}>
                 {editingId === customer.id ? (
                   <div className="p-8 space-y-4 animate-in fade-in zoom-in-95">
@@ -320,6 +336,17 @@ const CRM: React.FC = () => {
                 )}
               </div>
             ))}
+
+            <div className="col-span-full mt-10">
+              <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                onPageChange={setCurrentPage}
+                itemsPerPage={itemsPerPage}
+                onItemsPerPageChange={setItemsPerPage}
+                totalItems={filteredCustomers.length}
+              />
+            </div>
           </>
         )}
       </main>

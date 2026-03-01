@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { InventoryItem } from '../types';
 import { supabase } from '../lib/supabase';
+import Pagination from '../components/Pagination';
 
 const mapInventoryItem = (item: any): InventoryItem => ({
   id: item.id,
@@ -17,6 +18,10 @@ const Inventory: React.FC = () => {
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [search, setSearch] = useState('');
   const [showOutOfStock, setShowOutOfStock] = useState(false);
+
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(15);
 
   const fetchInventory = async () => {
     const { data, error } = await supabase.from('inventory_items').select('*');
@@ -53,6 +58,17 @@ const Inventory: React.FC = () => {
     const matchesStock = showOutOfStock || item.stock > 0;
     return matchesSearch && matchesStock;
   });
+
+  const totalPages = Math.ceil(filtered.length / itemsPerPage);
+  const paginatedInventory = filtered.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
+
+  // Reset to first page when searching
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, showOutOfStock]);
 
   const getStockBadgeColor = (stock: number) => {
     if (stock <= 3) return 'bg-danger/10 text-danger border border-danger/20';
@@ -108,7 +124,7 @@ const Inventory: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-surface-accent">
-                {filtered.map(item => (
+                {paginatedInventory.map(item => (
                   <tr key={item.id} className="hover:bg-primary/5 transition-colors">
                     <td className="p-5">
                       <span className="text-[9px] font-black px-2 py-1 bg-primary/10 text-primary rounded-full uppercase">{item.category}</span>
@@ -132,6 +148,16 @@ const Inventory: React.FC = () => {
                 ))}
               </tbody>
             </table>
+          </div>
+          <div className="p-4 bg-surface-dark border-t border-surface-accent">
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              onPageChange={setCurrentPage}
+              itemsPerPage={itemsPerPage}
+              onItemsPerPageChange={setItemsPerPage}
+              totalItems={filtered.length}
+            />
           </div>
         </div>
 

@@ -1,0 +1,65 @@
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior-y: contain;
+    font-family: 'Inter', sans-serif;
+    background-color: #041a12;
+    @apply text-slate-100 min-h-screen antialiased;
+  }
+}
+
+@layer components {
+  .ios-blur {
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    background-color: rgba(4, 26, 18, 0.8);
+  }
+
+  /* Custom Scrollbar for better visibility on dark theme */
+  .hide-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  
+  .hide-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  /* Horizontal Scroll Indicator for Mobile Tables */
+  .scroll-container {
+    @apply overflow-x-auto relative;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .scroll-indicator::after {
+    content: '→';
+    @apply absolute right-4 top-1/2 -translate-y-1/2 bg-primary/20 text-primary w-8 h-8 rounded-full flex items-center justify-center animate-pulse md:hidden pointer-events-none;
+  }
+}
+
+/* Mobile Optimizations for iPhone */
+@media (max-width: 768px) {
+  .ios-p-safe {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  
+  input, select, textarea {
+    @apply text-base !importants; /* Avoid auto-zoom on iOS */
+    font-size: 16px !important;
+  }
+
+  .mobile-card {
+    @apply rounded-[2rem] p-6;
+  }
+}
+
+/* Glassmorphism utility */
+.glass {
+  @apply bg-surface-dark/40 border border-surface-accent backdrop-blur-md;
+}
